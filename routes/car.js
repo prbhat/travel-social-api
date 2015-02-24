@@ -2,18 +2,101 @@ var express = require('express');
 var router = express.Router();
 var request = require('request');
 var winston = require('winston');
+var properties = require ("properties");
+var async = require ("async");
 
 var SERVICE_PREFIX = 'Orchestration Service: '
+
+var options = {
+  path: true,
+  include: true,
+  sections: true
+};
+
+var prop;
+
+//Loading Properties
+properties.parse ("dev.properties", options, function (error, p){
+  if (error)
+      return winston.error (SERVICE_PREFIX + 'Error While Loading the Properties' + error);
+  prop = p
+  winston.info(SERVICE_PREFIX + 'Properties Loaded: ' + prop)
+});
 
 
 router.post('/results', function (req, res) {
 
+    var gotResultsfromCache = false;
     winston.info(SERVICE_PREFIX + 'Request made to Orchestration service request:', req.body);
+    var winnerSelectionEnabled = "TRUE" === req.body.winnerselection.toUpperCase();
 
+    async.series([
+        function(callback){
+
+          winston.info('In first Async Series Call');
+          var startTime = new Date().getTime();
+          if(winnerSelectionEnabled && prop.enableElasticSearchCache){
+        //Rest call to Get Data cached data from Elastic Search when Winner Selection is Enabled
+            request({
+                uri: 'http://localhost:9201/car/searchResult/Houston_3_1_2015_to_3_2_2015_winner',
+                method: 'GET',
+            }, function (error, response) {
+
+              if(error) {
+                gotResultsfromCache == false;
+                winston.error('===== Error While Getting Data from Cache ====');
+                callback(null);
+              } else {
+                gotResultsfromCache = true;
+                winston.info('======= Got Results from Cache ========    ' + response.body);
+
+                var resp = JSON.parse(response.body);
+
+                var totalTime = new Date().getTime() - startTime;
+                resp._source.executionTime = totalTime;
+                res.json(resp._source);
+                callback(null);
+              }
+            });
+        } else if (winnerSelectionEnabled == false && prop.enableElasticSearchCache) {
+        //Rest call to Get Data cached data from Elastic Search when Winner Selection is disabled
+            request({
+                uri: 'http://localhost:9201/car/searchResult/Houston_3_1_2015_to_3_2_2015',
+                method: 'GET',
+            }, function (error, response) {
+
+              if(error) {
+                gotResultsfromCache == false;
+                winston.error('=====Error While Getting Data from Cache====');
+                callback(null);
+              } else {
+                gotResultsfromCache = true;
+                winston.info('======= Got Results from Cache ========       ' + response.body);
+
+                var resp = JSON.parse(response.body);
+                
+                var totalTime = new Date().getTime() - startTime;
+                resp._source.executionTime = totalTime;
+
+                res.json(resp._source);
+
+                callback(null);
+              }
+            });
+        } else {
+            callback(null);
+        }
+    },
+    function(callback){
+
+    winston.info('In second Async Series Call');
+    winston.info('>>>>>> Got Results from Cachee = ' + gotResultsfromCache) ;
+    if(gotResultsfromCache == false) {
+
+    winston.info('===== Calling All the Services to get Data =====');
     var data = '';
     var offerRes = '';
     var priceRes = '';
-    var winnerSelectionEnabled = "TRUE" === req.body.winnerselection.toUpperCase();
 
     // ***************** CRS SERVICE *****************
     var timeStartCRS = new Date().getTime();
@@ -166,6 +249,20 @@ router.post('/results', function (req, res) {
                                             executionTimeWinner + executionTimePostFilter + executionTimeSort;
                                         sortRS.executionTime = totalExecutionTime;
 
+                                        //Rest call to Store Data in Elastic Search
+                                        request({
+                                            uri: 'http://localhost:9201/car/searchResult/Houston_3_1_2015_to_3_2_2015_winner',
+                                            method: 'PUT',
+                                            form: sortResBody.text,
+                                        }, function (error, response) {
+                                            if(error){
+                                              winston.info('>>> Error While saving data in Elastic Search');
+                                            } else {
+                                              winston.info(response.body);
+                                            }
+                                        });
+
+                                        console.log('sortRS' + sortResBody.text);
                                         res.json(sortRS);
 
                                         winston.warn(SERVICE_PREFIX + '===============================================')
@@ -226,6 +323,19 @@ router.post('/results', function (req, res) {
                                     var timeEndSort = new Date().getTime();
                                     // ***************** END OF SERVICE *****************
 
+                                    //Rest call to Store Data in Elastic Search
+                                    request({
+                                        uri: 'http://localhost:9201/car/searchResult/Houston_3_1_2015_to_3_2_2015',
+                                        method: 'PUT',
+                                        form: sortResBody.text,
+                                    }, function (error, response) {
+                                      if(error){
+                                        winston.info('>>> Error While saving data in Elastic Search');
+                                      } else {
+                                        winston.info(response.body);
+                                      }
+                                    });
+
                                     var timeEndServiceCalls = new Date().getTime();
 
                                     var executionTimeCRS = timeEndCRS - timeStartCRS;
@@ -262,8 +372,10 @@ router.post('/results', function (req, res) {
             }); // End of cluster
         }); // End Pre Cluster Filter
     }); // End of crs
-
-
+    }
+  }
+]); //End of Async.series
+  
 }); // End of router
 
 
