@@ -29,16 +29,17 @@ router.post('/results', function (req, res) {
     var gotResultsfromCache = false;
     winston.info(SERVICE_PREFIX + 'Request made to Orchestration service request:', req.body);
     var winnerSelectionEnabled = "TRUE" === req.body.winnerselection.toUpperCase();
+    var elasticSearchEnabled = "TRUE" === req.body.elasticSearch.toUpperCase();
 
     async.series([
         function(callback){
 
           winston.info('In first Async Series Call');
           var startTime = new Date().getTime();
-          if(winnerSelectionEnabled && prop.enableElasticSearchCache){
+          if(winnerSelectionEnabled && elasticSearchEnabled){
         //Rest call to Get Data cached data from Elastic Search when Winner Selection is Enabled
             request({
-                uri: 'http://localhost:9201/car/searchResult/Houston_3_1_2015_to_3_2_2015_winner',
+                uri: 'http://192.168.59.103:9200/car/searchResult/Houston_3_1_2015_to_3_2_2015_winner',
                 method: 'GET',
             }, function (error, response) {
 
@@ -58,10 +59,10 @@ router.post('/results', function (req, res) {
                 callback(null);
               }
             });
-        } else if (winnerSelectionEnabled == false && prop.enableElasticSearchCache) {
+        } else if (winnerSelectionEnabled == false && elasticSearchEnabled) {
         //Rest call to Get Data cached data from Elastic Search when Winner Selection is disabled
             request({
-                uri: 'http://localhost:9201/car/searchResult/Houston_3_1_2015_to_3_2_2015',
+                uri: 'http://192.168.59.103:9200/car/searchResult/Houston_3_1_2015_to_3_2_2015',
                 method: 'GET',
             }, function (error, response) {
 
@@ -251,7 +252,7 @@ router.post('/results', function (req, res) {
 
                                         //Rest call to Store Data in Elastic Search
                                         request({
-                                            uri: 'http://localhost:9201/car/searchResult/Houston_3_1_2015_to_3_2_2015_winner',
+                                            uri: 'http://192.168.59.103:9200/car/searchResult/Houston_3_1_2015_to_3_2_2015_winner',
                                             method: 'PUT',
                                             form: sortResBody.text,
                                         }, function (error, response) {
@@ -324,8 +325,9 @@ router.post('/results', function (req, res) {
                                     // ***************** END OF SERVICE *****************
 
                                     //Rest call to Store Data in Elastic Search
+
                                     request({
-                                        uri: 'http://localhost:9201/car/searchResult/Houston_3_1_2015_to_3_2_2015',
+                                        uri: 'http://192.168.59.103:9200/car/searchResult/Houston_3_1_2015_to_3_2_2015',
                                         method: 'PUT',
                                         form: sortResBody.text,
                                     }, function (error, response) {
