@@ -29,7 +29,7 @@ router.get('/api', function(req, res) {
 
             // Get top venues
             for(var i = 0; i < items.length; i++) {
-                topVenues.push(items[i].venue.id)
+                topVenues.push(items[i].venue.name)
 
             }
 
